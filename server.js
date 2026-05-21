@@ -720,6 +720,27 @@ app.put('/api/settings/:key', async (req, res) => {
     ok(res, { key: req.params.key });
   } catch(e) { err(res, e); }
 });
+app.post('/api/seed', async (req, res) => {
+  if (req.headers['x-seed-token'] !== process.env.SEED_TOKEN) return res.status(403).json({ ok: false, error: 'Unauthorized' });
+  try {
+    const d = req.body;
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+    try {
+      for (const t of ['members','fee_records','attendance','notices','expenses','employees','salary_records','fee_structure'])
+        await conn.query(`DELETE FROM ${t}`);
+      if (d.members?.length)       for (const r of d.members)       await conn.query('INSERT IGNORE INTO members (id,name,phone,cls,shift,plan,category,`from`,`to`,dob,feeStatus,dueAmount,seat,color,addr,guardian,gphone,aadhar,aadharImg,photo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [r.id,r.name,r.phone||'',r.cls||'',r.shift||'',r.plan||'',r.category||'',r.from||null,r.to||null,r.dob||null,r.feeStatus||'Due',r.dueAmount||0,r.seat||null,r.color||'#3b82f6',r.addr||'',r.guardian||'',r.gphone||'',r.aadhar||'',null,null]);
+      if (d.feeRecords?.length)    for (const r of d.feeRecords)    await conn.query('INSERT IGNORE INTO fee_records (id,memberId,memberName,plan,shift,category,amount,paidAmount,dueAmount,date,month,mode,notes,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [r.id,r.memberId,r.memberName,r.plan||'',r.shift||'',r.category||'',r.amount||0,r.paidAmount||0,r.dueAmount||0,r.date||null,r.month||'',r.mode||'Cash',r.notes||'',r.status||'Paid']);
+      if (d.attendance?.length)    for (const r of d.attendance)    await conn.query('INSERT IGNORE INTO attendance (memberId,memberName,date,shift,seat,`in`,`out`,present) VALUES (?,?,?,?,?,?,?,?)', [r.memberId,r.memberName,r.date,r.shift||'',r.seat||null,r.in||null,r.out||null,r.present?1:0]);
+      if (d.expenses?.length)      for (const r of d.expenses)      await conn.query('INSERT IGNORE INTO expenses (id,cat,`desc`,amount,date,mode,notes) VALUES (?,?,?,?,?,?,?)', [r.id,r.cat||'other',r.desc||'',r.amount||0,r.date||null,r.mode||'Cash',r.notes||'']);
+      if (d.employees?.length)     for (const r of d.employees)     await conn.query('INSERT IGNORE INTO employees (id,name,role,phone,salary,join_date,addr) VALUES (?,?,?,?,?,?,?)', [r.id,r.name||'',r.role||'',r.phone||'',r.salary||0,r.join_date||null,r.addr||'']);
+      if (d.feeStructure?.length)  for (const r of d.feeStructure)  await conn.query('INSERT INTO fee_structure (plan,shift,amount) VALUES (?,?,?) ON DUPLICATE KEY UPDATE amount=?', [r.plan,r.shift,r.amount,r.amount]);
+      await conn.commit();
+      conn.release();
+      ok(res, { done: true, members: d.members?.length||0, fees: d.feeRecords?.length||0, attendance: d.attendance?.length||0 });
+    } catch(e) { await conn.rollback(); conn.release(); throw e; }
+  } catch(e) { err(res, e); }
+});
 
 // ── SERVE HTML ────────────────────────────────────────────────
 app.get('*', (req, res) => {
