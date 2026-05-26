@@ -741,6 +741,87 @@ app.post('/api/seed', async (req, res) => {
     } catch(e) { await conn.rollback(); conn.release(); throw e; }
   } catch(e) { err(res, e); }
 });
+// ═══════════════════════════════════════════════════════════════
+// RECYCLE BIN — Server Code
+// Ye code apne server.js / index.js mein add karo
+// ═══════════════════════════════════════════════════════════════
+
+// ── STEP 1: Table create karo (server start pe run karo) ──────
+// Ye apne DB init section mein add karo jahan aur tables CREATE hote hain:
+
+const CREATE_BIN_TABLE = `
+  CREATE TABLE IF NOT EXISTS recycle_bin (
+    id VARCHAR(60) PRIMARY KEY,
+    type VARCHAR(20) NOT NULL,
+    label TEXT,
+    data LONGTEXT,
+    deleted_at BIGINT NOT NULL
+  )
+`;
+// db.query(CREATE_BIN_TABLE); // ya jaise aur tables banate ho waise call karo
+
+
+// ── STEP 2: 4 Endpoints add karo ─────────────────────────────
+
+// GET /api/bin — sab items lao
+app.get('/api/bin', async (req, res) => {
+  try {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 din
+    const [rows] = await db.query(
+      'SELECT * FROM recycle_bin WHERE deleted_at > ? ORDER BY deleted_at DESC',
+      [cutoff]
+    );
+    // data field JSON parse karo
+    const parsed = rows.map(r => ({
+      ...r,
+      deletedAt: r.deleted_at,
+      data: (() => { try { return JSON.parse(r.data); } catch(e){ return r.data; } })()
+    }));
+    res.json(parsed);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/bin — ek item add karo
+app.post('/api/bin', async (req, res) => {
+  try {
+    const { id, type, label, data, deletedAt } = req.body;
+    const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+    await db.query(
+      'INSERT INTO recycle_bin (id, type, label, data, deleted_at) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE data=VALUES(data)',
+      [id, type, label || '', dataStr, deletedAt || Date.now()]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/bin/:id — ek item permanently delete karo
+app.delete('/api/bin/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM recycle_bin WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/bin — saari bin empty karo
+app.delete('/api/bin', async (req, res) => {
+  try {
+    await db.query('DELETE FROM recycle_bin');
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── STEP 3: Auto-purge (optional) ───────────────────────────
+// Server start pe 30 din purane items clean karo:
+// db.query('DELETE FROM recycle_bin WHERE deleted_at < ?', [Date.now() - 30*24*60*60*1000]);
+
 
 // ── SERVE HTML ────────────────────────────────────────────────
 app.get('*', (req, res) => {
