@@ -335,6 +335,40 @@ Object.assign(window.AR_API, {
     }
   }
 });
+// ═══════════════════════════════════════════════════════════════
+// RECYCLE BIN — api.js mein add karo (AR_API object ke andar)
+// ═══════════════════════════════════════════════════════════════
+
+// Ye 4 functions apne AR_API = { ... } object mein add karo:
+
+getBin: async () => {
+  const res = await fetch('/api/bin');
+  if (!res.ok) throw new Error('Failed to load bin');
+  return res.json();
+},
+
+addToBin: async (item) => {
+  const res = await fetch('/api/bin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item)
+  });
+  if (!res.ok) throw new Error('Failed to add to bin');
+  return res.json();
+},
+
+deleteFromBin: async (id) => {
+  const res = await fetch(`/api/bin/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete from bin');
+  return res.json();
+},
+
+emptyBin: async () => {
+  const res = await fetch('/api/bin', { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to empty bin');
+  return res.json();
+},
+      
 
 // AR_API alias
 const AR_API = window.AR_API;
